@@ -1,49 +1,85 @@
 /*
-  Clone of Input Pull-up Serial example
+  Take input from analog pin and activate LEDs based on its value.
 
-  This example demonstrates the use of pinMode(INPUT_PULLUP). It reads a digital
-  input on digital pin 13 and sets the built-in LED accordingly (also sending result via serial port).
+  The idea is that the analog input is connected to the output of a voltage divider with 1M on one side
+  and multiple resistors in series on the other side.
+  Each of those resistors can be bypassed by a different switch, and each resistor's value is
+  chosen so that we can determine from the resulting voltage which of them have been bypassed and which haven't.
+  So the resistor for switch 0 is chosen so that it, and only it, brings the voltage over half the input voltage (e.g. 1M)
+  Then the resistor of switch 1 is chosen so that it, and only it, brings the voltage over half the remaining voltage (e.g. 500k)
+  Et cetera, with the caveat that analog values are not accurate, and we also don't have every value of resistor at hand,
+  so the resistor values were chosen differently, see the macro definition sector.
 
   The circuit:
-  - jumper from pin 13 to ground
-  - built-in LED on pin 13
+  - analog input A0 is the output of abovementioned voltage divider
+  - digital outputs used to activate LEDs (see macro definition section for details)
 
-  Unlike pinMode(INPUT), there is no pull-down resistor necessary. An internal
-  20K-ohm resistor is pulled to 5V. This configuration causes the input to read
-  HIGH when the switch is open, and LOW when it is closed.
-
-  created 14 Mar 2012
-  by Scott Fitzgerald
+  created 07 Feb 2022
+  by SoongJr
 
   This example code is in the public domain.
 
-  https://www.arduino.cc/en/Tutorial/BuiltInExamples/InputPullupSerial
+  https://github.com/SoongJr/dopaminebox
 */
 
-#define INPUT_PIN 13
+#define DEBUG_MODE
+
+#define INPUT_PIN A0
+#define SWITCH0_R 1000000 // 1 mega-Ohm
+#define SWITCH1_R 470000  // 470 kilo-Ohm
+// voltages for each switch are calculated via the voltage divider formula:
+#define SWITCH0_VOLT (1024 * (1000000+SWITCH0_R)/SWITCH0_R))
+#define SWITCH1_VOLT (1024 * (1000000+SWITCH1_R)/SWITCH1_R))
+#define LED0 2
+#define LED1 3
 
 void setup()
 {
+#ifdef DEBUG_MODE
   // start serial connection
   Serial.begin(115200);
-  // configure pin 13 as an input and enable the internal pull-up resistor
-  pinMode(INPUT_PIN, INPUT_PULLUP);
-  pinMode(LED_BUILTIN, OUTPUT);
-  // digitalWrite(LED_BUILTIN, LOW);
-  Serial.println("Starting program...");
+#endif
+  // configure input pin as an input without pullup resistor
+  pinMode(INPUT_PIN, INPUT);
+  // configure digital pins for LEDs as output
+  pinMode(LED0, OUTPUT);
+  pinMode(LED1, OUTPUT);
+  // explicitly disable all LEDs
+  digitalWrite(LED0, LOW);
+  digitalWrite(LED1, LOW);
+}
+
+// checkSwitch compares the switch-specific value with the input values,
+// determines whether the switch is pressed, and sets the LED accordingly
+void checkSwitch(int &inputVal, int switchValue, uint8_t led)
+{
+#ifdef DEBUG_MODE
+  // print out the measured value
+  Serial.print(inputVal);
+#endif
+  // check if the voltage is over the expected value for this switch (with a small margin for error)
+  if (inputVal >= switchValue - 8)
+  {
+    digitalWrite(led, HIGH);
+    inputVal -= switchValue; // deduct the voltage caused by switch 0 fromt eh input value for further examination
+  }
+  else
+  {
+    digitalWrite(led, LOW);
+  }
 }
 
 void loop()
 {
-  // delay(1000);
-  // read the pushbutton value into a variable
-  // (for some reason this scwitches between HIGH and LOW on every read, maybe something is iterfereing with Pin 13)
-  int sensorVal = digitalRead(INPUT_PIN);
-  // print out the value of the pushbutton
-  Serial.print(sensorVal);
-
-  // Keep in mind the pull-up means the pushbutton's logic is inverted. It goes
-  // HIGH when it's open, and LOW when it's pressed. Turn on pin 13 when the
-  // button's pressed, and off when it's not:
-  digitalWrite(LED_BUILTIN, sensorVal == HIGH ? LOW : HIGH);
+#ifdef DEBUG_MODE
+  delay(1000); // delay to make serial output readable
+#endif
+  // read the analog value into a variable
+  int inputVal = analogRead(INPUT_PIN);
+  // from the analog value, determine which switches had been pressed
+  // (each of them bypasses one identifiable part of the voltage divider circuit, resulting in a voltage between 0V and 2.5V or 0-512)
+  // e.g.: switch 0 is responsible for half the possible voltage (so half of 512), and so are all other switches combined.
+  //       If it is activated, the voltage cannot be over 1.25V.
+  checkSwitch(inputVal, SWITCH0_VOLT, LED0);
+  checkSwitch(inputVal, SWITCH1_VOLT, LED1);
 }
