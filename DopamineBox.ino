@@ -2,10 +2,10 @@
   Take input from analog pin and activate LEDs based on its value.
 
   The state of all switches (active/pressed or not, 1 or 0) is "encoded" into a single analog signal
-  using an R-2R resistor ladder.
+  using an R-2R resistor ladder. Two analog signals actually, as we connect 4 switches each to A0 and A1
 
   The circuit:
-  - analog input A0 is the output of above-mentioned resistor ladder
+  - two R-2R resistor ladders connected to A0 and A1
   - digital outputs used to activate LEDs (see macro definition section for details)
 
   created 07 Feb 2022
@@ -42,6 +42,12 @@ public:
   /// turns the LED on (HIGH) or off (LOW)
   void set(uint8_t val)
   {
+#ifdef DEBUG_MODE
+    Serial.print("LED ");
+    Serial.print(m_pin);
+    Serial.print(": ");
+    Serial.println(val);
+#endif
     digitalWrite(m_pin, val);
   }
 
@@ -57,39 +63,34 @@ public:
   {
     m_led = &led;
     // from the switch position we can calculate the approximate voltage that closing this switch would cause in the output of the R-2R ladder:
-    m_switchValue = 1024 / (1 << (position + 1));
+    m_inputBitmask = 1 << (10 - (position + 1));
   }
 
   /// compares the switch-specific value with the input values,
-  /// determines whether the switch is pressed, and sets the CLed accordingly
-  /// warning: this method modifies the inputVal, so it must be called for the different LEDs in the correct order
-  void checkInput(int &inputVal)
+  /// determines whether the switch is pressed, and sets or unsets the LED accordingly
+  void checkInput(int inputVal)
   {
+    // apply a small margin for error to the input value
+    // (the test circuit on my breadboard was accurate to within a value of 2, but this may actually be different when the final circuit is soldered)
+    inputVal += 0x8;  // adding a value of 8 makes the least significant 5 bits useless, but guards against a higher error.
+    inputVal &= ~0xF; // To ensure we're not trying to use these bits, remove them from the input
 #ifdef DEBUG_MODE
     // print out the measured value
-    Serial.print(inputVal);
-    Serial.print(" > ");
-    Serial.print(m_switchValue);
-    Serial.println("?");
+    Serial.print("input: ");
+    Serial.print(inputVal, BIN);
+    Serial.print(" mask: ");
+    Serial.println(m_inputBitmask, BIN);
 #endif
-    // check if the signal exceeds the expected value for this switch (with a small margin for error; on my breadboard it was accurate to within a value of 2, but this may actually be different when the final circuit is soldered)
-    if (inputVal + 8 > m_switchValue)
-    {
-      // switch-specific voltage detected, meaning the switch is pressed and we activate the CLed
-      m_led->set(HIGH);
-      // also deduct this value from the input value for further examination
-      inputVal -= m_switchValue;
-    }
-    else
-    {
-      // deactivate the CLed
-      m_led->set(LOW);
-    }
+    // check if the input signal contains the expected bit for this switch
+    m_led->set((inputVal & m_inputBitmask) ? HIGH : LOW);
+#ifdef DEBUG_MODE
+    Serial.println("---");
+#endif
   }
 
 private:
   CLed *m_led;
-  int m_switchValue;
+  int m_inputBitmask;
 };
 
 // define LEDs and which pin they use
@@ -139,7 +140,6 @@ void loop()
 {
 #ifdef DEBUG_MODE
   delay(1000); // delay to make serial output readable
-  Serial.println("---");
 #endif
   // read the analog value into a variable
   int inputVal;
@@ -155,4 +155,7 @@ void loop()
   switch5.checkInput(inputVal);
   switch6.checkInput(inputVal);
   switch7.checkInput(inputVal);
+#ifdef DEBUG_MODE
+  Serial.println("######");
+#endif
 }
