@@ -16,10 +16,11 @@
   https://github.com/SoongJr/dopaminebox
 */
 
-#define DEBUG_MODE
+// #define DEBUG_MODE
 
 // Pins
-#define INPUT_PIN A0
+#define INPUT0 A0
+#define INPUT1 A1
 #define LED0 2
 #define LED1 3
 #define LED2 4
@@ -29,15 +30,15 @@
 #define LED6 8
 #define LED7 9
 // signal levels for each switch:
-// (switch 7 results in a difference of only 4 in the analog signal, that's probably already below the noise level and any more would be a waste)
 #define SWITCH0_SIGNAL (1024 / (1 << 1))
 #define SWITCH1_SIGNAL (1024 / (1 << 2))
 #define SWITCH2_SIGNAL (1024 / (1 << 3))
 #define SWITCH3_SIGNAL (1024 / (1 << 4))
-#define SWITCH4_SIGNAL (1024 / (1 << 5))
-#define SWITCH5_SIGNAL (1024 / (1 << 6))
-#define SWITCH6_SIGNAL (1024 / (1 << 7))
-#define SWITCH7_SIGNAL (1024 / (1 << 8))
+// resolution gets worse quite quickly, so we're spreading 8 switches over two analog inputs and the second set starts from the top:
+#define SWITCH4_SIGNAL SWITCH0_SIGNAL
+#define SWITCH5_SIGNAL SWITCH1_SIGNAL
+#define SWITCH6_SIGNAL SWITCH2_SIGNAL
+#define SWITCH7_SIGNAL SWITCH3_SIGNAL
 
 void setup()
 {
@@ -46,7 +47,8 @@ void setup()
   Serial.begin(115200);
 #endif
   // configure input pin as an input without pullup resistor
-  pinMode(INPUT_PIN, INPUT);
+  pinMode(INPUT0, INPUT);
+  pinMode(INPUT1, INPUT);
   // configure digital pins for LEDs as output
   pinMode(LED0, OUTPUT);
   pinMode(LED1, OUTPUT);
@@ -103,12 +105,15 @@ void loop()
   Serial.println("---");
 #endif
   // read the analog value into a variable
-  int inputVal = analogRead(INPUT_PIN);
+  int inputVal;
+  inputVal = analogRead(INPUT0);
   // from the analog value, determine which switches had been pressed
   checkSwitch(inputVal, SWITCH0_SIGNAL, LED0);
   checkSwitch(inputVal, SWITCH1_SIGNAL, LED1);
   checkSwitch(inputVal, SWITCH2_SIGNAL, LED2);
   checkSwitch(inputVal, SWITCH3_SIGNAL, LED3);
+  // the second set of four switches is wird to a separate input:
+  inputVal = analogRead(INPUT1);
   checkSwitch(inputVal, SWITCH4_SIGNAL, LED4);
   checkSwitch(inputVal, SWITCH5_SIGNAL, LED5);
   checkSwitch(inputVal, SWITCH6_SIGNAL, LED6);
