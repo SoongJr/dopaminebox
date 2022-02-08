@@ -21,24 +21,99 @@
 // Pins
 #define INPUT0 A0
 #define INPUT1 A1
-#define LED0 2
-#define LED1 3
-#define LED2 4
-#define LED3 5
-#define LED4 6
-#define LED5 7
-#define LED6 8
-#define LED7 9
-// signal levels for each switch:
-#define SWITCH0_SIGNAL (1024 / (1 << 1))
-#define SWITCH1_SIGNAL (1024 / (1 << 2))
-#define SWITCH2_SIGNAL (1024 / (1 << 3))
-#define SWITCH3_SIGNAL (1024 / (1 << 4))
-// resolution gets worse quite quickly, so we're spreading 8 switches over two analog inputs and the second set starts from the top:
-#define SWITCH4_SIGNAL SWITCH0_SIGNAL
-#define SWITCH5_SIGNAL SWITCH1_SIGNAL
-#define SWITCH6_SIGNAL SWITCH2_SIGNAL
-#define SWITCH7_SIGNAL SWITCH3_SIGNAL
+
+class CLed
+{
+public:
+  /// pin: number of digital IO pin
+  CLed(uint8_t pin)
+  {
+    m_pin = pin;
+  }
+
+  void setup()
+  {
+    // configure digital pin as output
+    pinMode(m_pin, OUTPUT);
+    // explicitly disable the CLed
+    digitalWrite(m_pin, LOW);
+  }
+
+  /// turns the LED on (HIGH) or off (LOW)
+  void set(uint8_t val)
+  {
+    digitalWrite(m_pin, val);
+  }
+
+private:
+  uint8_t m_pin;
+};
+class CSwitch
+{
+public:
+  /// switchPos: position (zero-based) of associated switch in R-2R ladder
+  /// led: CLed instance triggered by this switch
+  CSwitch(uint8_t position, CLed &led)
+  {
+    m_led = &led;
+    // from the switch position we can calculate the approximate voltage that closing this switch would cause in the output of the R-2R ladder:
+    m_switchValue = 1024 / (1 << (position + 1));
+  }
+
+  /// compares the switch-specific value with the input values,
+  /// determines whether the switch is pressed, and sets the CLed accordingly
+  /// warning: this method modifies the inputVal, so it must be called for the different LEDs in the correct order
+  void checkInput(int &inputVal)
+  {
+#ifdef DEBUG_MODE
+    // print out the measured value
+    Serial.print(inputVal);
+    Serial.print(" > ");
+    Serial.print(m_switchValue);
+    Serial.println("?");
+#endif
+    // check if the signal exceeds the expected value for this switch (with a small margin for error; on my breadboard it was accurate to within a value of 2, but this may actually be different when the final circuit is soldered)
+    if (inputVal + 8 > m_switchValue)
+    {
+      // switch-specific voltage detected, meaning the switch is pressed and we activate the CLed
+      m_led->set(HIGH);
+      // also deduct this value from the input value for further examination
+      inputVal -= m_switchValue;
+    }
+    else
+    {
+      // deactivate the CLed
+      m_led->set(LOW);
+    }
+  }
+
+private:
+  CLed *m_led;
+  int m_switchValue;
+};
+
+// define LEDs and which pin they use
+CLed led0(2);
+CLed led1(3);
+CLed led2(4);
+CLed led3(5);
+CLed led4(6);
+CLed led5(7);
+CLed led6(8);
+CLed led7(9);
+// define switches and which LED they trigger
+//      we split up switches over multiple ladders (restarting the position count from 0)
+//      because the voltages quickly become so small they fall below the noise level.
+//      Depending on circuit and the actual resistors used, 7 switches per input may be possible
+//      (but you'd have to adjust the margin that is applied when evaluating the value)
+CSwitch switch0(0, led0);
+CSwitch switch1(1, led1);
+CSwitch switch2(2, led2);
+CSwitch switch3(3, led3);
+CSwitch switch4(0, led4);
+CSwitch switch5(1, led5);
+CSwitch switch6(2, led6);
+CSwitch switch7(3, led7);
 
 void setup()
 {
@@ -49,53 +124,15 @@ void setup()
   // configure input pin as an input without pullup resistor
   pinMode(INPUT0, INPUT);
   pinMode(INPUT1, INPUT);
-  // configure digital pins for LEDs as output
-  pinMode(LED0, OUTPUT);
-  pinMode(LED1, OUTPUT);
-  pinMode(LED2, OUTPUT);
-  pinMode(LED3, OUTPUT);
-  pinMode(LED4, OUTPUT);
-  pinMode(LED5, OUTPUT);
-  pinMode(LED6, OUTPUT);
-  pinMode(LED7, OUTPUT);
-  // explicitly disable all LEDs
-  digitalWrite(LED0, LOW);
-  digitalWrite(LED1, LOW);
-  digitalWrite(LED2, LOW);
-  digitalWrite(LED3, LOW);
-  digitalWrite(LED4, LOW);
-  digitalWrite(LED5, LOW);
-  digitalWrite(LED6, LOW);
-  digitalWrite(LED7, LOW);
-}
-
-// checkSwitch compares the switch-specific value with the input values,
-// determines whether the switch is pressed, and sets the LED accordingly
-void checkSwitch(int &inputVal, int switchValue, uint8_t led)
-{
-#ifdef DEBUG_MODE
-  // print out the measured value
-  Serial.print("switch ");
-  Serial.print(led - LED0);
-  Serial.print(": ");
-  Serial.print(inputVal);
-  Serial.print(" > ");
-  Serial.print(switchValue);
-  Serial.println("?");
-#endif
-  // check if the signal exceeds the expected value for this switch (with a small margin for error)
-  if (inputVal > switchValue - 8)
-  {
-    // switch-specific voltage detected, meaning the switch is pressed and we activate the LED
-    digitalWrite(led, HIGH);
-    // also deduct this value from the input value for further examination
-    inputVal -= switchValue;
-  }
-  else
-  {
-    // deactivate the LED
-    digitalWrite(led, LOW);
-  }
+  // set up LEDs:
+  led0.setup();
+  led1.setup();
+  led2.setup();
+  led3.setup();
+  led4.setup();
+  led5.setup();
+  led6.setup();
+  led7.setup();
 }
 
 void loop()
@@ -107,15 +144,15 @@ void loop()
   // read the analog value into a variable
   int inputVal;
   inputVal = analogRead(INPUT0);
-  // from the analog value, determine which switches had been pressed
-  checkSwitch(inputVal, SWITCH0_SIGNAL, LED0);
-  checkSwitch(inputVal, SWITCH1_SIGNAL, LED1);
-  checkSwitch(inputVal, SWITCH2_SIGNAL, LED2);
-  checkSwitch(inputVal, SWITCH3_SIGNAL, LED3);
-  // the second set of four switches is wird to a separate input:
+  // from the analog value, determine which switches are pressed
+  switch0.checkInput(inputVal);
+  switch1.checkInput(inputVal);
+  switch2.checkInput(inputVal);
+  switch3.checkInput(inputVal);
+  // the second set of four switches is wired to a separate input:
   inputVal = analogRead(INPUT1);
-  checkSwitch(inputVal, SWITCH4_SIGNAL, LED4);
-  checkSwitch(inputVal, SWITCH5_SIGNAL, LED5);
-  checkSwitch(inputVal, SWITCH6_SIGNAL, LED6);
-  checkSwitch(inputVal, SWITCH7_SIGNAL, LED7);
+  switch4.checkInput(inputVal);
+  switch5.checkInput(inputVal);
+  switch6.checkInput(inputVal);
+  switch7.checkInput(inputVal);
 }
